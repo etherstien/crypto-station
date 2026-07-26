@@ -18,7 +18,7 @@
 //   4) Screener score 0-100 for ranking the broad universe:
 //        drawdown-from-ATH depth (40) + proximity to zone (30) +
 //        negative funding bonus (15) + fear bonus (15).
-import { sb, ok, err, authorized } from "../_shared.ts";
+import { sb, ok, err, authorized, pageAll } from "../_shared.ts";
 
 Deno.serve(async (req) => {
   if (!authorized(req)) return err("unauthorized", 401);
@@ -26,23 +26,22 @@ Deno.serve(async (req) => {
     const db = sb();
     const now = new Date().toISOString();
 
-    const [{ data: fngRow }, { data: markets }, { data: zonesAll }, { data: fundingAll }] =
-      await Promise.all([
-        db.from("sentiment_global").select("fng_value").order("ts", { ascending: false }).limit(1).maybeSingle(),
-        db.from("v_latest_market").select("*"),
-        db.from("zones").select("*"),
-        db.from("v_latest_funding").select("asset_id,funding_rate"),
-      ]);
+    const [{ data: fngRow }, markets, zonesAll, fundingAll] = await Promise.all([
+      db.from("sentiment_global").select("fng_value").order("ts", { ascending: false }).limit(1).maybeSingle(),
+      pageAll<any>((f, t) => db.from("v_latest_market").select("*").order("asset_id").range(f, t)),
+      pageAll<any>((f, t) => db.from("zones").select("*").order("asset_id").range(f, t)),
+      pageAll<any>((f, t) => db.from("v_latest_funding").select("asset_id,funding_rate").order("asset_id").range(f, t)),
+    ]);
 
     const fng = fngRow?.fng_value ?? null;
     const zonesBy = new Map<string, any>();
-    for (const z of zonesAll ?? []) zonesBy.set(`${z.asset_id}:${z.source}`, z);
-    const fundBy = new Map((fundingAll ?? []).map((f) => [f.asset_id, f.funding_rate]));
+    for (const z of zonesAll) zonesBy.set(`${z.asset_id}:${z.source}`, z);
+    const fundBy = new Map(fundingAll.map((f) => [f.asset_id, f.funding_rate]));
 
     const autoZones: any[] = [];
     const signals: any[] = [];
 
-    for (const m of markets ?? []) {
+    for (const m of markets) {
       const p = Number(m.price);
       if (!p || p <= 0) continue;
 
@@ -105,6 +104,6 @@ Deno.serve(async (req) => {
 
     const deploys = signals.filter((s) => s.gate_state === "DEPLOY").length;
     const armed = signals.filter((s) => s.gate_state === "ARMED").length;
-    return ok({ evaluated: signals.length, deploy: deploys, armed, fng });
+    return ok({ evaluated: signals.length, markets_seen: markets.length, zones_seen: zonesAll.length, deploy: deploys, armed, fng });
   } catch (e) { return err(e); }
 });

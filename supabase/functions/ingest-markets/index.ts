@@ -4,7 +4,7 @@
 // · Auto-registers new screener assets keyed on coingecko_id (NEVER symbol)
 // Budget: 4-6 calls/run. Hourly = ~3.6k calls/mo (CoinGecko Demo = 10k/mo,
 // Basic = 100k credits). Adjust cron cadence in cron.sql if upgrading.
-import { sb, ok, err, authorized } from "../_shared.ts";
+import { sb, ok, err, authorized, pageAll } from "../_shared.ts";
 
 const CG = "https://api.coingecko.com/api/v3";
 
@@ -22,10 +22,11 @@ Deno.serve(async (req) => {
     const db = sb();
     const now = new Date().toISOString();
 
-    // 1) known assets keyed by coingecko_id
-    const { data: assets } = await db.from("assets")
-      .select("id,coingecko_id,layer").eq("active", true).not("coingecko_id", "is", null);
-    const byCg = new Map((assets ?? []).map((a) => [a.coingecko_id, a]));
+    // 1) known assets keyed by coingecko_id — PAGINATED past the 1000-row cap
+    const assets = await pageAll<any>((f, t) => db.from("assets")
+      .select("id,coingecko_id,layer").eq("active", true).not("coingecko_id", "is", null)
+      .order("id").range(f, t));
+    const byCg = new Map(assets.map((a) => [a.coingecko_id, a]));
 
     // 2) top-1000 sweep — DEDUPED: rankings shift between page fetches, so
     // the same coin can appear on two pages; duplicate keys in one upsert
@@ -37,7 +38,7 @@ Deno.serve(async (req) => {
     }
 
     // 3) focus assets not in the sweep → fetch by id in one call
-    const missing = (assets ?? [])
+    const missing = assets
       .filter((a) => a.layer === "focus" && !rowMap.has(a.coingecko_id))
       .map((a) => a.coingecko_id);
     if (missing.length) {
@@ -58,9 +59,10 @@ Deno.serve(async (req) => {
         .upsert(newAssets, { onConflict: "coingecko_id", ignoreDuplicates: true })
         .select("id,coingecko_id");
       for (const a of inserted ?? []) byCg.set(a.coingecko_id, a);
-      // refresh map for any dupes skipped by ignoreDuplicates
-      const { data: all } = await db.from("assets").select("id,coingecko_id").not("coingecko_id", "is", null);
-      for (const a of all ?? []) if (!byCg.has(a.coingecko_id)) byCg.set(a.coingecko_id, a);
+      // refresh map for any dupes skipped by ignoreDuplicates — PAGINATED
+      const all = await pageAll<any>((f, t) => db.from("assets")
+        .select("id,coingecko_id").not("coingecko_id", "is", null).order("id").range(f, t));
+      for (const a of all) if (!byCg.has(a.coingecko_id)) byCg.set(a.coingecko_id, a);
     }
 
     const snaps = rows.map((r) => ({
@@ -82,6 +84,8 @@ Deno.serve(async (req) => {
       const { error } = await db.from("market_snapshots").upsert(snaps.slice(i, i + 500));
       if (error) throw error;
     }
-    return ok({ snapshots: snaps.length, new_assets: newAssets.length });
+    const unmapped = rows.length - snaps.length;
+    return ok({ snapshots: snaps.length, new_assets: newAssets.length,
+      assets_seen: byCg.size, cg_rows: rows.length, unmapped });
   } catch (e) { return err(e); }
 });

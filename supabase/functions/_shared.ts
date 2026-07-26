@@ -33,3 +33,19 @@ export function authorized(req: Request): boolean {
   const secret = Deno.env.get("JOB_SECRET") ?? "";
   return secret !== "" && req.headers.get("x-job-secret") === secret;
 }
+
+// Fetch ALL rows past PostgREST's max-rows cap (default 1000) by paging.
+// Usage: const rows = await pageAll((from, to) => db.from("t").select("c").range(from, to));
+export async function pageAll<T = any>(
+  mk: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = 1000,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let off = 0; ; off += pageSize) {
+    const { data, error } = await mk(off, off + pageSize - 1);
+    if (error) throw new Error(`select page ${off}: ${error.message}`);
+    out.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+  }
+  return out;
+}

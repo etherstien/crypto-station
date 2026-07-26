@@ -5,7 +5,7 @@
 import { sb, ok, err, authorized } from "../_shared.ts";
 
 const HOSTS = ["https://bitcoin-data.com", "https://api.bgeometrics.com"];
-const SPEC_PATHS = ["/openapi.json", "/v1/openapi.json", "/api/openapi.json", "/swagger.json", "/api-docs"];
+const SPEC_PATHS = ["/v3/api-docs", "/v2/api-docs", "/openapi.json", "/v1/openapi.json", "/api/openapi.json", "/swagger.json", "/api-docs"];
 const WANT: Record<string, RegExp> = {
   sth_rp: /sth.*realized.*price|short.term.holder.*realized/i,
   lth_rp: /lth.*realized.*price|long.term.holder.*realized/i,
