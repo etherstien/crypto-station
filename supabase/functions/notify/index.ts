@@ -24,14 +24,18 @@ async function send(title: string, body: string, priority: "max" | "high" | "def
   const results: string[] = [];
   const topic = Deno.env.get("NTFY_TOPIC");
   if (topic) {
-    const r = await fetch(`https://ntfy.sh/${topic}`, {
+    // ntfy JSON publish API: unicode-safe (emoji in HTTP headers is not a
+    // valid ByteString and crashes fetch — the v1.0 bug)
+    const r = await fetch("https://ntfy.sh", {
       method: "POST",
-      headers: {
-        Title: title,
-        Priority: priority,
-        Tags: priority === "max" ? "rotating_light,chart_with_downwards_trend" : "bell",
-      },
-      body,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        topic,
+        title,
+        message: body,
+        priority: priority === "max" ? 5 : priority === "high" ? 4 : 3,
+        tags: priority === "max" ? ["rotating_light"] : ["bell"],
+      }),
     });
     results.push(`ntfy:${r.status}`);
   }
