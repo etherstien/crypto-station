@@ -27,22 +27,24 @@ Deno.serve(async (req) => {
       .select("id,coingecko_id,layer").eq("active", true).not("coingecko_id", "is", null);
     const byCg = new Map((assets ?? []).map((a) => [a.coingecko_id, a]));
 
-    // 2) top-1000 sweep
-    const rows: any[] = [];
+    // 2) top-1000 sweep — DEDUPED: rankings shift between page fetches, so
+    // the same coin can appear on two pages; duplicate keys in one upsert
+    // batch make Postgres reject the whole statement.
+    const rowMap = new Map<string, any>();
     for (let page = 1; page <= 4; page++) {
       const batch = await cg(`/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&price_change_percentage=24h,1y`);
-      rows.push(...batch);
+      for (const r of batch) if (r?.id && !rowMap.has(r.id)) rowMap.set(r.id, r);
     }
 
     // 3) focus assets not in the sweep → fetch by id in one call
-    const seen = new Set(rows.map((r) => r.id));
     const missing = (assets ?? [])
-      .filter((a) => a.layer === "focus" && !seen.has(a.coingecko_id))
+      .filter((a) => a.layer === "focus" && !rowMap.has(a.coingecko_id))
       .map((a) => a.coingecko_id);
     if (missing.length) {
       const extra = await cg(`/coins/markets?vs_currency=usd&ids=${missing.join(",")}&price_change_percentage=24h,1y`);
-      rows.push(...extra);
+      for (const r of extra) if (r?.id && !rowMap.has(r.id)) rowMap.set(r.id, r);
     }
+    const rows = [...rowMap.values()];
 
     // 4) upsert: register unknown screener assets, then snapshot everything
     const newAssets = rows.filter((r) => !byCg.has(r.id)).map((r) => ({

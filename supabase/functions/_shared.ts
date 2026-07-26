@@ -18,7 +18,10 @@ export function ok(body: unknown) {
 
 export function err(e: unknown, status = 500) {
   console.error(e);
-  return new Response(JSON.stringify({ error: String(e) }), {
+  const msg = e instanceof Error ? e.message
+    : typeof e === "string" ? e
+    : JSON.stringify(e, Object.getOwnPropertyNames(e as object));
+  return new Response(JSON.stringify({ error: msg }), {
     status,
     headers: { "content-type": "application/json" },
   });
