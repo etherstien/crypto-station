@@ -1,82 +1,95 @@
-// ingest-onchain — BGeometrics BTC cycle metrics (free).
-// v1.1: BGeometrics slugs drift, so each metric tries a CANDIDATE LIST of
-// known variants and reports which one answered. If all fail, the response
-// lists what was tried so the fix is a one-line addition here.
+// ingest-onchain — BTC cycle metrics from BGeometrics.
+// v1.2: replicates btc_onchain_fetch_v2.py's approach — runtime OpenAPI
+// spec discovery — across BOTH hosts BGeometrics publishes under, then
+// falls back to hardcoded candidates. Response reports host + paths used.
 import { sb, ok, err, authorized } from "../_shared.ts";
 
-const BG = "https://api.bgeometrics.com";
-
-const CANDIDATES: Record<string, string[]> = {
-  sth_rp: [
-    "/bitcoin/sth-realized-price", "/bitcoin/sth_realized_price",
-    "/sth-realized-price", "/bitcoin/short-term-holder-realized-price",
-    "/bitcoin/sthrealizedprice",
-  ],
-  lth_rp: [
-    "/bitcoin/lth-realized-price", "/bitcoin/lth_realized_price",
-    "/lth-realized-price", "/bitcoin/long-term-holder-realized-price",
-    "/bitcoin/lthrealizedprice",
-  ],
-  realized_price: [
-    "/bitcoin/realized-price", "/bitcoin/realized_price",
-    "/realized-price", "/bitcoin/realizedprice",
-  ],
-  nupl: [
-    "/bitcoin/nupl", "/nupl", "/bitcoin/net-unrealized-profit-loss",
-  ],
+const HOSTS = ["https://bitcoin-data.com", "https://api.bgeometrics.com"];
+const SPEC_PATHS = ["/openapi.json", "/v1/openapi.json", "/api/openapi.json", "/swagger.json", "/api-docs"];
+const WANT: Record<string, RegExp> = {
+  sth_rp: /sth.*realized.*price|short.term.holder.*realized/i,
+  lth_rp: /lth.*realized.*price|long.term.holder.*realized/i,
+  realized_price: /^(?!.*(sth|lth|short|long)).*realized.*price/i,
+  nupl: /nupl|net.unrealized/i,
+};
+const FALLBACK: Record<string, string[]> = {
+  sth_rp: ["/v1/sth-realized-price", "/bitcoin/sth-realized-price", "/sth-realized-price"],
+  lth_rp: ["/v1/lth-realized-price", "/bitcoin/lth-realized-price", "/lth-realized-price"],
+  realized_price: ["/v1/realized-price", "/bitcoin/realized-price", "/realized-price"],
+  nupl: ["/v1/nupl", "/bitcoin/nupl", "/nupl"],
 };
 
 function extractLast(j: unknown): number | null {
   const arr = Array.isArray(j) ? j : (j as any)?.data;
-  if (!Array.isArray(arr) || !arr.length) {
-    // single-object responses: {value: x} or {nupl: x}
-    if (j && typeof j === "object") {
-      const vals = Object.values(j as object).filter((v) => typeof v === "number");
+  if (Array.isArray(arr) && arr.length) {
+    const row = arr[arr.length - 1];
+    if (Array.isArray(row)) return Number(row[row.length - 1]);
+    if (row && typeof row === "object") {
+      const vals = Object.values(row).filter((v) => typeof v === "number" && isFinite(v as number))
+        .concat(Object.values(row).filter((v) => typeof v === "string" && v !== "" && isFinite(Number(v))).map(Number));
       return vals.length ? Number(vals[vals.length - 1]) : null;
     }
-    return null;
+    return typeof row === "number" ? row : null;
   }
-  const row = arr[arr.length - 1];
-  if (Array.isArray(row)) return Number(row[row.length - 1]);
-  if (row && typeof row === "object") {
-    const vals = Object.values(row).filter((v) => typeof v === "number" && isFinite(v as number));
+  if (j && typeof j === "object") {
+    const vals = Object.values(j as object).filter((v) => typeof v === "number" && isFinite(v as number));
     return vals.length ? Number(vals[vals.length - 1]) : null;
   }
-  return typeof row === "number" ? row : null;
+  return null;
 }
 
-async function tryCandidates(paths: string[]): Promise<{ value: number | null; slug: string | null }> {
-  for (const p of paths) {
-    try {
-      const r = await fetch(`${BG}${p}`, { headers: { accept: "application/json" } });
-      if (!r.ok) continue;
-      const v = extractLast(await r.json());
-      if (v != null && isFinite(v)) return { value: v, slug: p };
-    } catch { /* next candidate */ }
-  }
-  return { value: null, slug: null };
+async function getJson(url: string): Promise<unknown | null> {
+  try {
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
 }
 
 Deno.serve(async (req) => {
   if (!authorized(req)) return err("unauthorized", 401);
   try {
     const db = sb();
-    const [sth, lth, rp, nupl] = await Promise.all([
-      tryCandidates(CANDIDATES.sth_rp),
-      tryCandidates(CANDIDATES.lth_rp),
-      tryCandidates(CANDIDATES.realized_price),
-      tryCandidates(CANDIDATES.nupl),
-    ]);
-    const { error } = await db.from("onchain_btc").insert({
-      sth_rp: sth.value, lth_rp: lth.value, realized_price: rp.value, nupl: nupl.value,
-    });
-    if (error) throw new Error(`db insert: ${error.message}`);
-    return ok({
-      sth_rp: sth.value, lth_rp: lth.value, realized_price: rp.value, nupl: nupl.value,
-      slugs_used: { sth: sth.slug, lth: lth.slug, rp: rp.slug, nupl: nupl.slug },
-      note: (sth.value == null || nupl.value == null)
-        ? "some metrics failed all candidates — run btc_onchain_fetch_v2.py --debug and add the working slug to CANDIDATES"
-        : "ok",
-    });
+    const results: Record<string, number | null> = { sth_rp: null, lth_rp: null, realized_price: null, nupl: null };
+    const used: Record<string, string | null> = { sth_rp: null, lth_rp: null, realized_price: null, nupl: null };
+    let specHost: string | null = null;
+
+    // 1) OpenAPI discovery
+    outer:
+    for (const host of HOSTS) {
+      for (const sp of SPEC_PATHS) {
+        const spec = await getJson(`${host}${sp}`) as any;
+        const paths = spec?.paths ? Object.keys(spec.paths) : null;
+        if (paths?.length) {
+          specHost = `${host}${sp}`;
+          for (const metric of Object.keys(WANT)) {
+            const match = paths.find((p) => WANT[metric].test(p));
+            if (match) {
+              const v = extractLast(await getJson(`${host}${match}`));
+              if (v != null) { results[metric] = v; used[metric] = `${host}${match}`; }
+            }
+          }
+          break outer;
+        }
+      }
+    }
+
+    // 2) fallback candidates for anything still null
+    for (const metric of Object.keys(FALLBACK)) {
+      if (results[metric] != null) continue;
+      for (const host of HOSTS) {
+        for (const p of FALLBACK[metric]) {
+          const v = extractLast(await getJson(`${host}${p}`));
+          if (v != null) { results[metric] = v; used[metric] = `${host}${p}`; break; }
+        }
+        if (results[metric] != null) break;
+      }
+    }
+
+    const { error } = await db.from("onchain_btc").insert(results);
+    if (error) throw new Error(`db: ${error.message}`);
+    const allNull = Object.values(results).every((v) => v == null);
+    return ok({ ...results, spec_found_at: specHost, endpoints_used: used,
+      note: allNull ? "all discovery failed — both hosts unreachable or schema changed; compare against btc_onchain_fetch_v2.py --debug output" : "ok" });
   } catch (e) { return err(e); }
 });
