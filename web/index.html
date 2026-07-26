@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STATION — tranche &amp; sentiment gate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117; --panel:#11161f; --line:#21262d; --txt:#c9d1d9; --dim:#8b949e;
+  --t1:#388bfd; --t2:#a371f7; --t3:#ff7b72; --in:#3fb950; --warn:#d29922;
+  --eq:#c792ea; --ai:#2dd4bf; --dr:#56d364; --core:#64b5f6;
+  --mono:'IBM Plex Mono',ui-monospace,monospace; --disp:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--mono);font-size:13px;padding:20px;max-width:1240px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px}
+h1{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.14em}
+h1 span{color:var(--dim);font-weight:400}
+#asof{color:var(--dim);font-size:11px}
+h2{font-family:var(--disp);font-size:12px;font-weight:500;letter-spacing:.22em;color:var(--dim);margin:26px 0 10px;text-transform:uppercase}
+
+/* ── signature: the deploy-gate annunciator ── */
+#gate{display:grid;grid-template-columns:220px 1fr;gap:1px;background:var(--line);border:1px solid var(--line)}
+#gate>div{background:var(--panel);padding:16px 18px}
+#gate .state{font-family:var(--disp);font-size:34px;font-weight:700;letter-spacing:.06em;line-height:1}
+#gate .state.NONE{color:var(--dim)} #gate .state.WATCH{color:var(--t1)}
+#gate .state.ARMED{color:var(--warn)} #gate .state.DEPLOY{color:var(--in);animation:pulse 1.2s ease-in-out infinite}
+#gate .state.DONT_CHASE{color:var(--t3)}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){#gate .state.DEPLOY{animation:none}}
+#gate .sub{color:var(--dim);font-size:11px;margin-top:8px}
+#gauges{display:flex;gap:26px;flex-wrap:wrap;align-items:center}
+.g .lbl{color:var(--dim);font-size:10px;letter-spacing:.14em}
+.g .val{font-size:20px;font-weight:600;margin-top:2px}
+.bar{height:4px;width:130px;background:var(--line);margin-top:6px;position:relative}
+.bar i{position:absolute;top:-3px;width:2px;height:10px;background:var(--txt)}
+
+table{width:100%;border-collapse:collapse}
+th{color:var(--dim);font-weight:500;font-size:10px;letter-spacing:.12em;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);text-transform:uppercase}
+td{padding:6px 8px;border-bottom:1px solid #161b22;white-space:nowrap}
+td.num,th.num{text-align:right}
+tr.tierrow td{color:var(--dim);font-family:var(--disp);letter-spacing:.2em;font-size:10px;padding-top:14px;text-transform:uppercase}
+.sym{font-weight:600}
+.chip{display:inline-block;padding:1px 7px;font-size:10px;border:1px solid var(--line);letter-spacing:.06em}
+.chip.t1{color:var(--t1);border-color:var(--t1)} .chip.t2{color:var(--t2);border-color:var(--t2)}
+.chip.t3{color:var(--t3);border-color:var(--t3)} .chip.none{color:var(--dim)}
+.chip.reserve{color:var(--t3);border-color:var(--t3);background:#3a1515}
+.chip.DEPLOY{color:#0d1117;background:var(--in);border-color:var(--in);font-weight:600}
+.chip.ARMED{color:var(--warn);border-color:var(--warn)} .chip.WATCH{color:var(--t1);border-color:var(--t1)}
+.chip.DONT_CHASE{color:var(--t3);border-color:var(--t3)} .chip.NONE{color:var(--dim)}
+.pos{color:var(--in)}.neg{color:var(--t3)}
+.zone{color:var(--dim);font-size:11px}
+.zone b{font-weight:500}
+.zone b.t1{color:var(--t1)}.zone b.t2{color:var(--t2)}.zone b.t3{color:var(--t3)}
+#strip{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);flex-wrap:wrap}
+#strip>div{background:var(--panel);padding:10px 16px;flex:1;min-width:130px}
+#strip .lbl{color:var(--dim);font-size:10px;letter-spacing:.14em}
+#strip .val{font-size:16px;font-weight:600;margin-top:3px}
+footer{margin-top:34px;color:var(--dim);font-size:10px;border-top:1px solid var(--line);padding-top:10px;line-height:1.8}
+footer a{color:var(--dim)}
+#err{color:var(--t3);padding:14px;border:1px solid var(--t3);display:none;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>STATION <span>/ tranche · sentiment gate</span></h1>
+  <div id="asof">loading…</div>
+</header>
+<div id="err"></div>
+
+<div id="gate">
+  <div>
+    <div class="state NONE" id="gateState">—</div>
+    <div class="sub" id="gateSub">evaluating…</div>
+  </div>
+  <div id="gauges">
+    <div class="g"><div class="lbl">FEAR &amp; GREED</div><div class="val" id="fng">—</div>
+      <div class="bar"><i id="fngPin" style="left:0"></i></div></div>
+    <div class="g"><div class="lbl">BTC vs STH-RP</div><div class="val" id="sth">—</div></div>
+    <div class="g"><div class="lbl">NUPL</div><div class="val" id="nupl">—</div></div>
+    <div class="g"><div class="lbl">REALIZED PRICE</div><div class="val" id="rp">—</div></div>
+    <div class="g"><div class="lbl">IN / NEAR ZONE</div><div class="val" id="alertCount">—</div></div>
+  </div>
+</div>
+
+<h2>Focus — hand ladders</h2>
+<table id="focus"><thead><tr>
+  <th>Asset</th><th>Tier</th><th class="num">Price</th><th class="num">24h</th><th class="num">ATH Δ</th>
+  <th>Zone</th><th>Gate</th><th>Ladder T1 · T2 · T3</th><th class="num">Fund.</th>
+</tr></thead><tbody></tbody></table>
+
+<h2>Screener — top of the broad universe (auto ladders)</h2>
+<table id="screener"><thead><tr>
+  <th>Asset</th><th class="num">Rank</th><th class="num">Price</th><th class="num">ATH Δ</th>
+  <th>Zone</th><th>Gate</th><th class="num">Score</th>
+</tr></thead><tbody></tbody></table>
+
+<footer id="foot">
+  Sentiment gate: DEPLOY = price in T2/T3 <b>and</b> extreme fear (FNG ≤ 25) <b>and</b> funding ≤ 0 where available. Gate confirms tranche deployment — it never originates entries.<br>
+  Data: prices &amp; market structure by <a href="https://www.coingecko.com" rel="noopener">CoinGecko</a> · derivatives by Coinalyze · Fear &amp; Greed by alternative.me · BTC on-chain by BGeometrics · protocol fundamentals by DefiLlama. Private analytical tool.
+</footer>
+
+<script>
+const $=s=>document.querySelector(s);
+const fp=p=>p==null?'—':p>=1000?'$'+Math.round(p).toLocaleString():p>=100?'$'+p.toFixed(1):p>=1?'$'+p.toFixed(3):p>=0.01?'$'+p.toFixed(4):p>=0.0001?'$'+p.toFixed(6):'$'+p.toFixed(8);
+const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
+const cls=v=>v==null?'':v>=0?'pos':'neg';
+
+async function load(){
+  try{
+    const d=await (await fetch('/api/dashboard')).json();
+    if(d.error) throw d.error;
+    render(d);
+    const s=await (await fetch('/api/screener?limit=25')).json();
+    renderScreener(s.screener||[]);
+  }catch(e){$('#err').style.display='block';$('#err').textContent='API error: '+e+' — if this is a fresh deploy, run the ingest jobs once (see README step 6).';}
+}
+
+function render(d){
+  const fng=d.sentiment?.fng_value;
+  $('#fng').textContent=fng??'—';
+  $('#fng').style.color=fng==null?'':fng<=25?'var(--in)':fng>=75?'var(--t3)':'var(--txt)';
+  if(fng!=null)$('#fngPin').style.left=(fng/100*128)+'px';
+  const oc=d.onchain||{};
+  $('#nupl').textContent=oc.nupl!=null?Number(oc.nupl).toFixed(3):'—';
+  $('#rp').textContent=oc.realized_price!=null?fp(Number(oc.realized_price)):'—';
+  const btc=(d.focus||[]).find(a=>a.symbol==='BTC');
+  $('#sth').textContent=(btc?.price&&oc.sth_rp)?((btc.price/oc.sth_rp-1)*100).toFixed(1)+'%':'—';
+  const alerts=d.alerts||[];
+  $('#alertCount').textContent=alerts.length;
+  const deploys=alerts.filter(a=>a.gate_state==='DEPLOY');
+  const state=deploys.length?'DEPLOY':alerts.length?'ARMED':(fng!=null&&fng>=75)?'DONT_CHASE':'NONE';
+  const el=$('#gateState');el.textContent=state.replace('_',' ');el.className='state '+state;
+  $('#gateSub').textContent=deploys.length?deploys.map(a=>a.symbol).join(' · ')+' — in deep zone with fear confirmation'
+    :alerts.length?alerts.slice(0,8).map(a=>a.symbol).join(' · ')+' in T2/T3, gate not confirming'
+    :'no focus asset in a deep zone';
+  $('#asof').textContent='as of '+new Date().toLocaleString();
+
+  const tb=$('#focus tbody');tb.innerHTML='';
+  let lastTier='';
+  for(const a of (d.focus||[])){
+    const tier=(a.tier||'').split('-')[0];
+    if(tier!==lastTier){lastTier=tier;const tr=document.createElement('tr');tr.className='tierrow';
+      tr.innerHTML='<td colspan="9">'+({S:'★ TIER S',A:'▲ TIER A',B:'◆ TIER B',C:'● TIER C',AI:'◈ AI',DR:'◎ DEFI REVENUE'}[tier]||tier)+'</td>';tb.appendChild(tr);}
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="sym">${a.symbol}</td><td style="color:var(--dim)">${a.tier??''}</td>
+      <td class="num">${fp(a.price)}</td><td class="num ${cls(a.chg_24h_pct)}">${pct(a.chg_24h_pct)}</td>
+      <td class="num" style="color:var(--dim)">${a.ath_pct!=null?a.ath_pct.toFixed(0)+'%':'—'}</td>
+      <td><span class="chip ${a.zone_state||'none'}">${(a.zone_state||'—').toUpperCase()}</span></td>
+      <td><span class="chip ${a.gate_state||'NONE'}">${(a.gate_state||'—').replace('_',' ')}</span></td>
+      <td class="zone"><b class="t1">${fp(a.t1_lo)}–${fp(a.t1_hi)}</b> · <b class="t2">${fp(a.t2_lo)}–${fp(a.t2_hi)}</b> · <b class="t3">${fp(a.t3_lo)}–${fp(a.t3_hi)}</b></td>
+      <td class="num ${a.funding_rate!=null?(a.funding_rate<0?'pos':'neg'):''}">${a.funding_rate!=null?(a.funding_rate*100).toFixed(4)+'%':'—'}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function renderScreener(rows){
+  const tb=$('#screener tbody');tb.innerHTML='';
+  for(const a of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="sym">${a.symbol} <span style="color:var(--dim);font-weight:400">${a.name??''}</span></td>
+      <td class="num" style="color:var(--dim)">${a.mcap_rank??'—'}</td><td class="num">${fp(a.price)}</td>
+      <td class="num" style="color:var(--dim)">${a.ath_pct!=null?a.ath_pct.toFixed(0)+'%':'—'}</td>
+      <td><span class="chip ${a.zone_state||'none'}">${(a.zone_state||'—').toUpperCase()}</span></td>
+      <td><span class="chip ${a.gate_state||'NONE'}">${(a.gate_state||'—').replace('_',' ')}</span></td>
+      <td class="num" style="font-weight:600">${a.score??'—'}</td>`;
+    tb.appendChild(tr);
+  }
+}
+load();
+setInterval(load, 5*60*1000);
+</script>
+</body>
+</html>
