@@ -133,7 +133,7 @@ create table if not exists protocol_metrics (
 create table if not exists signals (
   asset_id   bigint not null references assets(id),
   ts         timestamptz not null default now(),
-  zone_state text not null,     -- none/t1/t2/t3/reserve
+  zone_state text not null,     -- none/t1/t2/t3/reserve/below_t3/gap
   gate_state text not null,
   score      numeric,           -- screener composite 0-100
   components jsonb,             -- {fng, funding_rate, zone_src, dd_ath, ...}

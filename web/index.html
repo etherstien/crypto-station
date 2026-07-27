@@ -47,6 +47,8 @@ tr.tierrow td{color:var(--dim);font-family:var(--disp);letter-spacing:.2em;font-
 .chip.t1{color:var(--t1);border-color:var(--t1)} .chip.t2{color:var(--t2);border-color:var(--t2)}
 .chip.t3{color:var(--t3);border-color:var(--t3)} .chip.none{color:var(--dim)}
 .chip.reserve{color:var(--t3);border-color:var(--t3);background:#3a1515}
+.chip.below_t3{color:var(--t3);border-color:var(--t3);border-style:dashed}
+.chip.gap{color:var(--dim);border-style:dashed}
 .chip.DEPLOY{color:#0d1117;background:var(--in);border-color:var(--in);font-weight:600}
 .chip.ARMED{color:var(--warn);border-color:var(--warn)} .chip.WATCH{color:var(--t1);border-color:var(--t1)}
 .chip.DONT_CHASE{color:var(--t3);border-color:var(--t3)} .chip.NONE{color:var(--dim)}
@@ -99,6 +101,7 @@ footer a{color:var(--dim)}
 
 <footer id="foot">
   Sentiment gate: DEPLOY = price in T2/T3 <b>and</b> extreme fear (FNG ≤ 25) <b>and</b> funding ≤ 0 where available. Gate confirms tranche deployment — it never originates entries.<br>
+  Zone states: T1/T2/T3 = in zone · GAP = between zones · BELOW-T3 = fell through the ladder · RESERVE = below reserve line · NONE = above all zones.<br>
   Data: prices &amp; market structure by <a href="https://www.coingecko.com" rel="noopener">CoinGecko</a> · derivatives by Coinalyze · Fear &amp; Greed by alternative.me · BTC on-chain by BGeometrics · protocol fundamentals by DefiLlama. Private analytical tool.
 </footer>
 
@@ -107,6 +110,7 @@ const $=s=>document.querySelector(s);
 const fp=p=>p==null?'—':p>=1000?'$'+Math.round(p).toLocaleString():p>=100?'$'+p.toFixed(1):p>=1?'$'+p.toFixed(3):p>=0.01?'$'+p.toFixed(4):p>=0.0001?'$'+p.toFixed(6):'$'+p.toFixed(8);
 const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
 const cls=v=>v==null?'':v>=0?'pos':'neg';
+const zlbl=v=>(v||'—').toUpperCase().replace(/_/g,'-');
 
 async function load(){
   try{
@@ -148,7 +152,7 @@ function render(d){
     tr.innerHTML=`<td class="sym">${a.symbol}</td><td style="color:var(--dim)">${a.tier??''}</td>
       <td class="num">${fp(a.price)}</td><td class="num ${cls(a.chg_24h_pct)}">${pct(a.chg_24h_pct)}</td>
       <td class="num" style="color:var(--dim)">${a.ath_pct!=null?a.ath_pct.toFixed(0)+'%':'—'}</td>
-      <td><span class="chip ${a.zone_state||'none'}">${(a.zone_state||'—').toUpperCase()}</span></td>
+      <td><span class="chip ${a.zone_state||'none'}">${zlbl(a.zone_state)}</span></td>
       <td><span class="chip ${a.gate_state||'NONE'}">${(a.gate_state||'—').replace('_',' ')}</span></td>
       <td class="zone"><b class="t1">${fp(a.t1_lo)}–${fp(a.t1_hi)}</b> · <b class="t2">${fp(a.t2_lo)}–${fp(a.t2_hi)}</b> · <b class="t3">${fp(a.t3_lo)}–${fp(a.t3_hi)}</b></td>
       <td class="num ${a.funding_rate!=null?(a.funding_rate<0?'pos':'neg'):''}">${a.funding_rate!=null?(a.funding_rate*100).toFixed(4)+'%':'—'}</td>`;
@@ -163,7 +167,7 @@ function renderScreener(rows){
     tr.innerHTML=`<td class="sym">${a.symbol} <span style="color:var(--dim);font-weight:400">${a.name??''}</span></td>
       <td class="num" style="color:var(--dim)">${a.mcap_rank??'—'}</td><td class="num">${fp(a.price)}</td>
       <td class="num" style="color:var(--dim)">${a.ath_pct!=null?a.ath_pct.toFixed(0)+'%':'—'}</td>
-      <td><span class="chip ${a.zone_state||'none'}">${(a.zone_state||'—').toUpperCase()}</span></td>
+      <td><span class="chip ${a.zone_state||'none'}">${zlbl(a.zone_state)}</span></td>
       <td><span class="chip ${a.gate_state||'NONE'}">${(a.gate_state||'—').replace('_',' ')}</span></td>
       <td class="num" style="font-weight:600">${a.score??'—'}</td>`;
     tb.appendChild(tr);

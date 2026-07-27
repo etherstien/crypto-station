@@ -15,6 +15,11 @@ T1/T2/T3 entry zones, and gates deployment signals on retail sentiment:
 funding rate ≤ 0 (where futures exist).** Sentiment CONFIRMS tranche
 deployment — it never originates entries. Other gate states: WATCH (in T1),
 ARMED (in T2/T3, gate not confirming), DONT_CHASE (FNG ≥ 75), NONE.
+Zone states (signals.zone_state, lowercase): none / t1 / t2 / t3 / reserve /
+below_t3 (fell through the T3 floor) / gap (between two defined zones).
+below_t3 and gap are display-honesty states added Jul 27 — they gate as
+NONE, same as when they rendered as none. Whether below_t3 should instead
+arm the gate (like reserve does) is an open product question for the user.
 
 The user's investment framework (important for any product decision):
 - Tranche discipline: T1 ~12-22% below spot / T2 ~35-50% (ATL-anchored) /
@@ -145,8 +150,9 @@ Recent asset events encoded in data:
 
 ## Backlog (rough priority order)
 
-1. Display honesty states: BELOW-T3 and GAP (between zones) currently
-   render as NONE in evaluate + dashboard — add both.
+1. ✔ DONE Jul 27: display honesty states below_t3 + gap added to evaluate,
+   dashboard (dashed chips + legend), and notify body text. Gate/score
+   behavior unchanged by design.
 2. Screener liquidity floor (min volume/mcap) — null-price funds and dust
    currently pollute top ranks (nulls sort first on score desc).
 3. Coinalyze mappings: 25/27 resolve; find the 2 failing coinalyze_sym

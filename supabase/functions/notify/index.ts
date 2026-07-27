@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
       const emoji = cur === "DEPLOY" ? "🟢" : cur === "ARMED" ? "🟠" : cur === "WATCH" ? "🔵" : cur === "DONT_CHASE" ? "🔴" : "⚪";
       const fund = a.funding_rate != null ? ` · fund ${(a.funding_rate * 100).toFixed(3)}%` : "";
       const title = `${emoji} ${a.symbol}: ${prev} → ${cur}`;
-      const body = `${a.symbol} ${fmtPrice(a.price)} · zone ${String(a.zone_state ?? "none").toUpperCase()}${fund}` +
+      const body = `${a.symbol} ${fmtPrice(a.price)} · zone ${String(a.zone_state ?? "none").toUpperCase().replace(/_/g, "-")}${fund}` +
         (cur === "DEPLOY" ? " · IN DEEP ZONE + FEAR CONFIRMED — check ladder before acting" : "");
       const res = await send(title, body, pr as any);
       await db.from("notify_state").upsert({ key, state: cur, updated_at: new Date().toISOString() });

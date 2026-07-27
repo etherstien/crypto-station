@@ -7,7 +7,10 @@
 //        T2 = 35–50% below, floored near ATL when ATL is close
 //        T3 = 55–70% below (capitulation)
 //      Auto ladders are recomputed each run and stored under source='auto'.
-//   2) Zone state: none / t1 / t2 / t3 / reserve from latest price.
+//   2) Zone state: none / t1 / t2 / t3 / reserve / below_t3 / gap from
+//      latest price. below_t3 (fell through the T3 floor) and gap (between
+//      two defined zones) are display-honesty states — they gate as NONE,
+//      exactly as they did when they rendered as none.
 //   3) Sentiment gate (the point of this whole system):
 //        DEPLOY      in T2/T3 AND (FNG <= 25 extreme fear
 //                    AND funding_rate <= 0 when funding data exists)
@@ -69,6 +72,9 @@ Deno.serve(async (req) => {
       else if (inZ(z.t3_lo, z.t3_hi)) zoneState = "t3";
       else if (inZ(z.t2_lo, z.t2_hi)) zoneState = "t2";
       else if (inZ(z.t1_lo, z.t1_hi) || nearT1) zoneState = "t1";
+      else if (z.t3_lo != null && p < z.t3_lo) zoneState = "below_t3";
+      else if ((z.t3_hi != null && z.t2_lo != null && p > z.t3_hi && p < z.t2_lo) ||
+               (z.t2_hi != null && z.t1_lo != null && p > z.t2_hi && p < z.t1_lo)) zoneState = "gap";
 
       const fr = fundBy.get(m.asset_id) ?? null;
       const fearGate = fng != null && fng <= 25;
