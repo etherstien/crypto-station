@@ -72,7 +72,8 @@ The user's investment framework (important for any product decision):
 
 Supabase Edge Function secrets (`supabase secrets set`): JOB_SECRET (also
 embedded in the SQL `call_job()` function — rotating means updating BOTH;
-note: the current value leaked into a chat and rotation is on the backlog),
+rotated Jul 27 to a clean 64-hex value after the original leaked: old value
+revoked+verified 401, leak traces purged from cron.job_run_details),
 COINGECKO_API_KEY, COINALYZE_API_KEY, NTFY_TOPIC, optional POLYMARKET_SLUGS.
 Netlify env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (legacy JWT key —
 enabled in dashboard), TV_WEBHOOK_SECRET.
@@ -134,12 +135,11 @@ redeploys automatically on git push.
 7. **Cron dead 17h** (Jul 26 17:25 → Jul 27 11:40 UTC) → cron.sql re-run
    during notify setup left the template's angle brackets around BOTH
    substituted values in call_job ("Bad hostname" on every run). Repaired
-   via `supabase db query --linked`. CRITICAL quirk found while fixing:
-   the env JOB_SECRET value itself INCLUDES literal angle brackets
-   (`<...>`) — call_job must send it bracket-wrapped to match. Remember
-   both halves when rotating (backlog #6 — more urgent now: the value
-   appears in cron.job_run_details error logs). After any call_job edit,
-   verify the next tick in cron.job_run_details.
+   via `supabase db query --linked`. Quirk found while fixing: the env
+   JOB_SECRET value itself INCLUDED literal angle brackets (`<...>`), so
+   call_job had to send it bracket-wrapped to match. Resolved by the
+   Jul 27 rotation (backlog #6) — the new value is plain hex. After any
+   call_job edit, verify the next tick in cron.job_run_details.
 
 ## Current state (as of Jul 27, 2026 midday)
 
@@ -178,8 +178,10 @@ Recent asset events encoded in data:
    built off $0.045 estimate).
 5. Verify funding-rate units/scale against Coinalyze docs (suspicious
    1.0000% prints). Gate only uses SIGN so logic is safe regardless.
-6. JOB_SECRET rotation (leaked to chat; low blast radius but rotate:
-   supabase secrets set + edit call_job() in SQL).
+6. ✔ DONE Jul 27: JOB_SECRET rotated (64-char hex, no special chars, no
+   brackets). supabase secrets set + call_job() updated together; old
+   secret verified rejected; 146 cron log rows containing the old value
+   purged. Value lives ONLY in Supabase secrets + call_job — not on disk.
 7. Netlify env upgrade: consider new sb_secret keys when Supabase legacy
    JWT keys are eventually retired.
 8. Supabase Pro upgrade before daily reliance (free tier pauses!).

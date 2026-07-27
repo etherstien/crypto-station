@@ -5,8 +5,6 @@
 -- "Bad hostname"; see CLAUDE.md Bug History #7):
 --   <PROJECT-REF>  your Supabase project ref (dashboard URL)
 --   <JOB-SECRET>   the same value you set: supabase secrets set JOB_SECRET=...
---     (NOTE: the currently-set JOB_SECRET value itself contains literal
---      angle brackets — match it exactly, and fix this when rotating)
 -- Schedules (UTC):
 --   markets    hourly at :05          (~3.6k CoinGecko calls/mo)
 --   evaluate   hourly at :08          (after markets lands)
