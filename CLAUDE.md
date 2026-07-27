@@ -131,13 +131,23 @@ redeploys automatically on git push.
 6. BGeometrics all-null → hardcoded slugs wrong; fixed with runtime OpenAPI
    discovery (/v3/api-docs — it's a Spring Boot service) + fallback
    candidates, mirroring the user's btc_onchain_fetch_v2.py approach.
+7. **Cron dead 17h** (Jul 26 17:25 → Jul 27 11:40 UTC) → cron.sql re-run
+   during notify setup left the template's angle brackets around BOTH
+   substituted values in call_job ("Bad hostname" on every run). Repaired
+   via `supabase db query --linked`. CRITICAL quirk found while fixing:
+   the env JOB_SECRET value itself INCLUDES literal angle brackets
+   (`<...>`) — call_job must send it bracket-wrapped to match. Remember
+   both halves when rotating (backlog #6 — more urgent now: the value
+   appears in cron.job_run_details error logs). After any call_job edit,
+   verify the next tick in cron.job_run_details.
 
-## Current state (as of Jul 26, 2026 evening)
+## Current state (as of Jul 27, 2026 midday)
 
-All 7 functions green. ~1,057 assets (57 focus + ~1,000 screener).
-Market context: FNG 26 (one point above the fear gate), BTC ~5% BELOW
-STH-RP, NUPL 0.185, gate NONE, six focus names in T1/WATCH (AKT, IO, OLAS,
-AERO, WLD, BNB). Dry-powder posture confirmed by the system's own read.
+All 7 functions green; cron repaired after 17h outage (Bug History #7).
+~1,056 assets (57 focus + ~1,000 screener). Market context Jul 27: FNG 30
+(Fear), BTC ~65.1k (−47.8% from 52w high, +11.3% above 52w low), gate NONE,
+0 deploy/armed, five focus names in T1/WATCH. market_52w filling: 20/57
+focus rows done, remainder within 2 hourly markets runs.
 
 Recent asset events encoded in data:
 - VVV: position closed Jul 25 @ 13.199 (+30.4% net); ladder kept for
