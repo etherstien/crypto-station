@@ -85,7 +85,36 @@ Deno.serve(async (req) => {
       if (error) throw error;
     }
     const unmapped = rows.length - snaps.length;
+
+    // 5) 52-week high/low — FOCUS LAYER ONLY (screener-wide would cost
+    //    ~1000 market_chart calls/day, blowing the Demo budget). Rows
+    //    refresh when >20h stale, max 20 per run, 2.2s spacing to respect
+    //    the 30 calls/min Demo limit (57 focus = full refresh in 3 runs).
+    //    try/catch so a missing table or one bad asset never fails ingest.
+    let w52_refreshed = 0; let w52_note: string | null = null;
+    try {
+      const { data: w52rows, error: w52err } = await db.from("market_52w").select("asset_id,ts");
+      if (w52err) throw new Error(w52err.message);
+      const freshTs = new Map((w52rows ?? []).map((r: any) => [r.asset_id, r.ts]));
+      const cutoff = Date.now() - 20 * 3600 * 1000;
+      const stale = assets.filter((a) => a.layer === "focus" &&
+        (!freshTs.has(a.id) || new Date(freshTs.get(a.id)).getTime() < cutoff)).slice(0, 20);
+      for (const a of stale) {
+        try {
+          const ch = await cg(`/coins/${a.coingecko_id}/market_chart?vs_currency=usd&days=365`);
+          const ps = (ch?.prices ?? []).map((p: any) => Number(p[1])).filter((v: number) => v > 0);
+          if (ps.length) {
+            const { error } = await db.from("market_52w").upsert(
+              { asset_id: a.id, high_52w: Math.max(...ps), low_52w: Math.min(...ps), ts: now });
+            if (error) throw new Error(error.message);
+            w52_refreshed++;
+          }
+        } catch (e) { w52_note = `w52 ${a.coingecko_id}: ${e instanceof Error ? e.message : e}`; }
+        await new Promise((r) => setTimeout(r, 2200));
+      }
+    } catch (e) { w52_note = `w52 skipped: ${e instanceof Error ? e.message : e}`; }
+
     return ok({ snapshots: snaps.length, new_assets: newAssets.length,
-      assets_seen: byCg.size, cg_rows: rows.length, unmapped });
+      assets_seen: byCg.size, cg_rows: rows.length, unmapped, w52_refreshed, w52_note });
   } catch (e) { return err(e); }
 });

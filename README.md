@@ -3,8 +3,9 @@
 Monitors the broad crypto universe (top ~1,000 by market cap) and your
 curated focus list, evaluates every asset against tranche entry ladders,
 and gates deployment signals on retail sentiment: **DEPLOY fires only when
-price is in a T2/T3 zone AND the Fear & Greed index shows extreme fear AND
-funding is non-positive.** Sentiment confirms — it never originates.
+price is in a deep zone (T2/T3, below T3, or reserve) AND the Fear & Greed
+index shows extreme fear AND funding is non-positive.** Sentiment confirms —
+it never originates.
 
 Stack (all Stage 1 / ~$85/mo at production settings):
 Supabase (Postgres + pg_cron + Edge Functions) · Netlify (static dashboard

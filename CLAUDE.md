@@ -11,15 +11,16 @@ Monitors the top ~1,000 crypto assets (screener layer) plus a curated ~57-name
 focus watchlist (hand-tuned tranche ladders), evaluates every asset against
 T1/T2/T3 entry zones, and gates deployment signals on retail sentiment:
 
-**DEPLOY fires only when: price in T2/T3 zone AND Fear & Greed ≤ 25 AND
-funding rate ≤ 0 (where futures exist).** Sentiment CONFIRMS tranche
-deployment — it never originates entries. Other gate states: WATCH (in T1),
-ARMED (in T2/T3, gate not confirming), DONT_CHASE (FNG ≥ 75), NONE.
+**DEPLOY fires only when: price in a deep zone (T2/T3/below_t3/reserve) AND
+Fear & Greed ≤ 25 AND funding rate ≤ 0 (where futures exist).** Sentiment
+CONFIRMS tranche deployment — it never originates entries. Other gate
+states: WATCH (in T1), ARMED (in deep zone, gate not confirming),
+DONT_CHASE (FNG ≥ 75), NONE.
 Zone states (signals.zone_state, lowercase): none / t1 / t2 / t3 / reserve /
 below_t3 (fell through the T3 floor) / gap (between two defined zones).
-below_t3 and gap are display-honesty states added Jul 27 — they gate as
-NONE, same as when they rendered as none. Whether below_t3 should instead
-arm the gate (like reserve does) is an open product question for the user.
+Added Jul 27 for display honesty; below_t3 ARMS the gate like reserve does
+(user decision Jul 27), gap gates as NONE. Note: auto ladders recompute
+from spot each run, so below_t3/gap can only occur on hand ladders.
 
 The user's investment framework (important for any product decision):
 - Tranche discipline: T1 ~12-22% below spot / T2 ~35-50% (ATL-anchored) /
@@ -38,7 +39,9 @@ The user's investment framework (important for any product decision):
   UPGRADE TO PRO before relying on it daily: free projects pause after 7
   idle days, which kills pg_cron silently).
   - Postgres: schema in `supabase/schema.sql`, seed in `supabase/seed.sql`,
-    notifier tables in `supabase/notify.sql`.
+    notifier tables in `supabase/notify.sql`, 52-week high/low table +
+    v_dashboard update in `supabase/52w.sql`. DDL can be run from this
+    machine: `supabase db query --linked -f <file>` (Management API).
   - 7 Edge Functions in `supabase/functions/`: ingest-markets,
     ingest-sentiment, ingest-funding, ingest-onchain, ingest-defillama,
     evaluate, notify. Shared helpers in `_shared.ts` (incl. `pageAll` —
@@ -151,8 +154,11 @@ Recent asset events encoded in data:
 ## Backlog (rough priority order)
 
 1. ✔ DONE Jul 27: display honesty states below_t3 + gap added to evaluate,
-   dashboard (dashed chips + legend), and notify body text. Gate/score
-   behavior unchanged by design.
+   dashboard (dashed chips + legend), and notify body text.
+   Follow-up same day (user decisions): below_t3 now ARMS the gate like
+   reserve; 52-week high/low distance columns on the focus table
+   (market_52w table via 52w.sql, refreshed ~daily by ingest-markets from
+   CoinGecko market_chart, focus layer only, 20/run @ 2.2s spacing).
 2. Screener liquidity floor (min volume/mcap) — null-price funds and dust
    currently pollute top ranks (nulls sort first on score desc).
 3. Coinalyze mappings: 25/27 resolve; find the 2 failing coinalyze_sym

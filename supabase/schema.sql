@@ -125,10 +125,10 @@ create table if not exists protocol_metrics (
 
 -- ── Signals: evaluator output ───────────────────────────────
 -- gate_state values:
---   NONE        price above all zones, no signal
+--   NONE        price above all zones (or in a gap between zones)
 --   WATCH       in/near T1
---   ARMED       in T2 or T3, sentiment gate NOT confirming
---   DEPLOY      in T2/T3 AND gate confirms (extreme fear ± neg funding)
+--   ARMED       in deep zone (T2/T3/below_t3/reserve), gate NOT confirming
+--   DEPLOY      in deep zone AND gate confirms (extreme fear ± neg funding)
 --   DONT_CHASE  FNG >= 75 (greed) — chase-warning regardless of zone
 create table if not exists signals (
   asset_id   bigint not null references assets(id),

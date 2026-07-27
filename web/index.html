@@ -90,6 +90,7 @@ footer a{color:var(--dim)}
 <h2>Focus — hand ladders</h2>
 <table id="focus"><thead><tr>
   <th>Asset</th><th>Tier</th><th class="num">Price</th><th class="num">24h</th><th class="num">ATH Δ</th>
+  <th class="num">52W-H Δ</th><th class="num">52W-L Δ</th>
   <th>Zone</th><th>Gate</th><th>Ladder T1 · T2 · T3</th><th class="num">Fund.</th>
 </tr></thead><tbody></tbody></table>
 
@@ -100,8 +101,9 @@ footer a{color:var(--dim)}
 </tr></thead><tbody></tbody></table>
 
 <footer id="foot">
-  Sentiment gate: DEPLOY = price in T2/T3 <b>and</b> extreme fear (FNG ≤ 25) <b>and</b> funding ≤ 0 where available. Gate confirms tranche deployment — it never originates entries.<br>
-  Zone states: T1/T2/T3 = in zone · GAP = between zones · BELOW-T3 = fell through the ladder · RESERVE = below reserve line · NONE = above all zones.<br>
+  Sentiment gate: DEPLOY = price in a deep zone (T2/T3, BELOW-T3, or RESERVE) <b>and</b> extreme fear (FNG ≤ 25) <b>and</b> funding ≤ 0 where available. Gate confirms tranche deployment — it never originates entries.<br>
+  Zone states: T1/T2/T3 = in zone · GAP = between zones · BELOW-T3 = fell through the ladder (arms the gate) · RESERVE = below reserve line · NONE = above all zones.<br>
+  52W-H/L Δ = distance from 52-week high / low (focus assets, refreshed ~daily from CoinGecko).<br>
   Data: prices &amp; market structure by <a href="https://www.coingecko.com" rel="noopener">CoinGecko</a> · derivatives by Coinalyze · Fear &amp; Greed by alternative.me · BTC on-chain by BGeometrics · protocol fundamentals by DefiLlama. Private analytical tool.
 </footer>
 
@@ -111,6 +113,7 @@ const fp=p=>p==null?'—':p>=1000?'$'+Math.round(p).toLocaleString():p>=100?'$'+
 const pct=v=>v==null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
 const cls=v=>v==null?'':v>=0?'pos':'neg';
 const zlbl=v=>(v||'—').toUpperCase().replace(/_/g,'-');
+const rel=(p,r)=>(p!=null&&r!=null&&r>0)?(p/r-1)*100:null;
 
 async function load(){
   try{
@@ -138,7 +141,7 @@ function render(d){
   const state=deploys.length?'DEPLOY':alerts.length?'ARMED':(fng!=null&&fng>=75)?'DONT_CHASE':'NONE';
   const el=$('#gateState');el.textContent=state.replace('_',' ');el.className='state '+state;
   $('#gateSub').textContent=deploys.length?deploys.map(a=>a.symbol).join(' · ')+' — in deep zone with fear confirmation'
-    :alerts.length?alerts.slice(0,8).map(a=>a.symbol).join(' · ')+' in T2/T3, gate not confirming'
+    :alerts.length?alerts.slice(0,8).map(a=>a.symbol).join(' · ')+' in deep zone, gate not confirming'
     :'no focus asset in a deep zone';
   $('#asof').textContent='as of '+new Date().toLocaleString();
 
@@ -147,11 +150,13 @@ function render(d){
   for(const a of (d.focus||[])){
     const tier=(a.tier||'').split('-')[0];
     if(tier!==lastTier){lastTier=tier;const tr=document.createElement('tr');tr.className='tierrow';
-      tr.innerHTML='<td colspan="9">'+({S:'★ TIER S',A:'▲ TIER A',B:'◆ TIER B',C:'● TIER C',AI:'◈ AI',DR:'◎ DEFI REVENUE'}[tier]||tier)+'</td>';tb.appendChild(tr);}
+      tr.innerHTML='<td colspan="11">'+({S:'★ TIER S',A:'▲ TIER A',B:'◆ TIER B',C:'● TIER C',AI:'◈ AI',DR:'◎ DEFI REVENUE'}[tier]||tier)+'</td>';tb.appendChild(tr);}
     const tr=document.createElement('tr');
     tr.innerHTML=`<td class="sym">${a.symbol}</td><td style="color:var(--dim)">${a.tier??''}</td>
       <td class="num">${fp(a.price)}</td><td class="num ${cls(a.chg_24h_pct)}">${pct(a.chg_24h_pct)}</td>
       <td class="num" style="color:var(--dim)">${a.ath_pct!=null?a.ath_pct.toFixed(0)+'%':'—'}</td>
+      <td class="num ${cls(rel(a.price,a.high_52w))}">${pct(rel(a.price,a.high_52w))}</td>
+      <td class="num ${cls(rel(a.price,a.low_52w))}">${pct(rel(a.price,a.low_52w))}</td>
       <td><span class="chip ${a.zone_state||'none'}">${zlbl(a.zone_state)}</span></td>
       <td><span class="chip ${a.gate_state||'NONE'}">${(a.gate_state||'—').replace('_',' ')}</span></td>
       <td class="zone"><b class="t1">${fp(a.t1_lo)}–${fp(a.t1_hi)}</b> · <b class="t2">${fp(a.t2_lo)}–${fp(a.t2_hi)}</b> · <b class="t3">${fp(a.t3_lo)}–${fp(a.t3_hi)}</b></td>

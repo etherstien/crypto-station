@@ -8,13 +8,14 @@
 //        T3 = 55–70% below (capitulation)
 //      Auto ladders are recomputed each run and stored under source='auto'.
 //   2) Zone state: none / t1 / t2 / t3 / reserve / below_t3 / gap from
-//      latest price. below_t3 (fell through the T3 floor) and gap (between
-//      two defined zones) are display-honesty states — they gate as NONE,
-//      exactly as they did when they rendered as none.
+//      latest price. below_t3 = fell through the T3 floor; gap = between
+//      two defined zones. below_t3 ARMS the gate like reserve does (user
+//      decision Jul 27); gap gates as NONE.
 //   3) Sentiment gate (the point of this whole system):
-//        DEPLOY      in T2/T3 AND (FNG <= 25 extreme fear
+//        DEPLOY      in a deep zone (T2/T3/below_t3/reserve) AND
+//                    (FNG <= 25 extreme fear
 //                    AND funding_rate <= 0 when funding data exists)
-//        ARMED       in T2/T3, gate not confirming
+//        ARMED       in a deep zone, gate not confirming
 //        WATCH       in (or within 2% above) T1
 //        DONT_CHASE  FNG >= 75 — greed warning regardless of zone
 //        NONE        otherwise
@@ -81,7 +82,7 @@ Deno.serve(async (req) => {
       const fundingGate = fr == null ? true : fr <= 0; // no data → don't block
       let gate = "NONE";
       if (fng != null && fng >= 75) gate = "DONT_CHASE";
-      else if (zoneState === "t2" || zoneState === "t3" || zoneState === "reserve")
+      else if (zoneState === "t2" || zoneState === "t3" || zoneState === "reserve" || zoneState === "below_t3")
         gate = fearGate && fundingGate ? "DEPLOY" : "ARMED";
       else if (zoneState === "t1") gate = "WATCH";
 
